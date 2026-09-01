@@ -1,9 +1,7 @@
 name: TroutKing Schedule Monitor
 
 on:
-  schedule:
-    # 毎日 日本時間 午前8時 (UTC 前日 23:00) に実行
-    - cron: '0 23 * * *'
+  # GitHub側の自動タイマー(cron)を削除し、外部(cron-job.org)や手動実行のみを許可
   workflow_dispatch:
 
 permissions:
@@ -36,6 +34,6 @@ jobs:
       - name: DBファイル（変更差分）の保存とコミット
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add schedule_db.json
           git diff --quiet && git diff --staged --quiet || (git commit -m "Update schedule DB" && git push)
