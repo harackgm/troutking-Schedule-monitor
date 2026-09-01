@@ -1,14 +1,11 @@
 name: TroutKing Schedule Monitor
 
-# 実行タイミングの設定
 on:
   schedule:
     # 毎日 日本時間 午前8時 (UTC 前日 23:00) に実行
     - cron: '0 23 * * *'
-  # 手動実行用ボタンを追加
   workflow_dispatch:
 
-# リポジトリに変更を保存（プッシュ）するための権限設定
 permissions:
   contents: write
 
@@ -30,14 +27,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
-      - name: スクリプトの実行
+      - name: スクリプトの実行（LINE通知付き）
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
         run: python main.py
-        # 後ほどLINEのTokenなどをここに環境変数として設定します
 
       - name: DBファイル（変更差分）の保存とコミット
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]"
           git add schedule_db.json
-          # 変更がある場合のみコミットしてプッシュする
           git diff --quiet && git diff --staged --quiet || (git commit -m "Update schedule DB" && git push)
