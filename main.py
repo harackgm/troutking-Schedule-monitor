@@ -20,9 +20,57 @@ LINE_USER_ID = os.environ.get("LINE_USER_ID")
 # ==========================================
 # 関数
 # ==========================================
-def send_line_message(message_text):
+def create_flex_bubble(status_label, header_color, text_content):
+    """カルーセル用の1枚のパネル（Bubble）を生成する"""
+    return {
+        "type": "bubble",
+        "size": "kilo",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": header_color,
+            "contents": [
+                {
+                    "type": "text",
+                    "text": status_label,
+                    "color": "#ffffff",
+                    "weight": "bold",
+                    "size": "sm"
+                }
+            ]
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": text_content,
+                    "wrap": True,
+                    "size": "sm"
+                }
+            ]
+        }
+    }
+
+def send_line_flex_carousel(added_list, removed_list):
+    """LINE Messaging API を使用してカルーセル(Flex Message)を送信する"""
     if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_USER_ID:
         print("エラー: LINEのトークン情報が設定されていません。")
+        return
+
+    bubbles = []
+    
+    # 新規・更新データを緑パネルで追加
+    for text in added_list:
+        bubbles.append(create_flex_bubble("🟢 新/更新", "#27AE60", text))
+        
+    # 削除・旧データを赤パネルで追加
+    for text in removed_list:
+        bubbles.append(create_flex_bubble("🔴 旧情報", "#E74C3C", text))
+
+    # パネルが空の場合は送信しない
+    if not bubbles:
         return
 
     url = "https://api.line.me/v2/bot/message/push"
@@ -30,15 +78,25 @@ def send_line_message(message_text):
         "Content-Type": "application/json",
         "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
     }
+    
     payload = {
         "to": LINE_USER_ID,
-        "messages": [{"type": "text", "text": message_text}]
+        "messages": [
+            {
+                "type": "flex",
+                "altText": "トラキンスケジュール更新",
+                "contents": {
+                    "type": "carousel",
+                    "contents": bubbles
+                }
+            }
+        ]
     }
 
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=10)
         response.raise_for_status()
-        print("LINEへの通知が正常に送信されました。")
+        print("LINEへのカルーセル通知が正常に送信されました。")
     except Exception as e:
         print(f"LINE送信エラー: {e}")
 
@@ -81,11 +139,11 @@ def get_schedule_data():
             schedule_items.append({"hash": h, "text": text})
 
     # ==========================================
-    # 【テスト用データ注入処理：デザイン確認用】
-    # 本番と全く同じフォーマットの架空データを2件追加します
+    # 【テスト用データ注入処理：カルーセル確認用】
+    # 前回のテストデータから少し変更し、新旧パネル両方を出現させます
     # ==========================================
-    mock_data_1 = "【本戦】 架空オープンダブルス第99戦 / 2026年12月31日(木) / テストフィッシングスポット / 180名 / 調整中"
-    mock_data_2 = "【カップ戦】 架空ルアーメーカーカップ / 開催日 12月31日(木) / 主催 テストメーカー / 定員 100名 / 開催地 愛知県"
+    mock_data_1 = "【本戦】 架空オープンダブルス第99戦 / 2026年12月31日(木) / カルーセルテスト会場 / 180名 / 調整中"
+    mock_data_2 = "【カップ戦】 架空ルアーメーカーカップ / 開催日 12月31日(木) / 主催 カルーセルテスト / 定員 100名 / 開催地 愛知県"
     
     schedule_items.append({"hash": hashlib.md5(mock_data_1.encode('utf-8')).hexdigest(), "text": mock_data_1})
     schedule_items.append({"hash": hashlib.md5(mock_data_2.encode('utf-8')).hexdigest(), "text": mock_data_2})
@@ -134,15 +192,8 @@ def main():
         return
 
     if total_changes > 0:
-        msg_lines = ["【トラキン 日程更新】\n"]
-        for text in added:
-            msg_lines.append(f"🟢 [新/更新]: {text}\n")
-        for text in removed:
-            msg_lines.append(f"🔴 [旧情報]: {text}\n")
-
-        notification_message = "\n".join(msg_lines)[:2000] 
-        send_line_message(notification_message)
-        
+        # カルーセル通知を実行
+        send_line_flex_carousel(added, removed)
         save_db(new_db)
         print("DBを更新しました。")
     else:
