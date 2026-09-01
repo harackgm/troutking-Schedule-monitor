@@ -81,14 +81,14 @@ def get_schedule_data():
             schedule_items.append({"hash": h, "text": text})
 
     # ==========================================
-    # 【テスト用データ注入処理】
-    # 意図的に架空の差分を1件作り出し、LINE通知を誘発します
+    # 【テスト用データ注入処理：デザイン確認用】
+    # 本番と全く同じフォーマットの架空データを2件追加します
     # ==========================================
-    test_text = "【システムテスト】LINE APIとの連携テスト。このメッセージが届けば成功です。"
-    schedule_items.append({
-        "hash": hashlib.md5(test_text.encode('utf-8')).hexdigest(),
-        "text": test_text
-    })
+    mock_data_1 = "【本戦】 架空オープンダブルス第99戦 / 2026年12月31日(木) / テストフィッシングスポット / 180名 / 調整中"
+    mock_data_2 = "【カップ戦】 架空ルアーメーカーカップ / 開催日 12月31日(木) / 主催 テストメーカー / 定員 100名 / 開催地 愛知県"
+    
+    schedule_items.append({"hash": hashlib.md5(mock_data_1.encode('utf-8')).hexdigest(), "text": mock_data_1})
+    schedule_items.append({"hash": hashlib.md5(mock_data_2.encode('utf-8')).hexdigest(), "text": mock_data_2})
 
     return schedule_items
 
