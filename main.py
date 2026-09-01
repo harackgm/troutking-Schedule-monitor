@@ -21,10 +21,45 @@ LINE_USER_ID = os.environ.get("LINE_USER_ID")
 # 関数
 # ==========================================
 def create_flex_bubble(status_label, header_color, text_content):
-    """カルーセル用の1枚のパネル（Bubble）を生成する"""
+    """カルーセル用の1枚のパネル（Bubble）を生成する（デザイン改良版）"""
+    
+    # 取得したテキストを " / " で分割してリスト化
+    parts = [p.strip() for p in text_content.split(" / ") if p.strip()]
+    
+    # 1つ目（大会名）をタイトルとして扱う
+    title_text = parts[0] if len(parts) > 0 else "大会情報"
+    
+    # 2つ目以降（開催日、場所など）を詳細情報として扱う
+    details = parts[1:] if len(parts) > 1 else []
+    
+    # パネルの中身（ボディ）を構築
+    body_contents = [
+        {
+            "type": "text",
+            "text": title_text,
+            "weight": "bold",
+            "size": "md",
+            "wrap": True
+        },
+        {
+            "type": "separator",
+            "margin": "md"
+        }
+    ]
+    
+    # 詳細情報を縦に並べる
+    for detail in details:
+        body_contents.append({
+            "type": "text",
+            "text": detail,
+            "size": "sm",
+            "color": "#666666",
+            "wrap": True,
+            "margin": "sm"
+        })
+
     return {
         "type": "bubble",
-        "size": "kilo",
         "header": {
             "type": "box",
             "layout": "vertical",
@@ -42,14 +77,7 @@ def create_flex_bubble(status_label, header_color, text_content):
         "body": {
             "type": "box",
             "layout": "vertical",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": text_content,
-                    "wrap": True,
-                    "size": "sm"
-                }
-            ]
+            "contents": body_contents
         }
     }
 
@@ -139,11 +167,11 @@ def get_schedule_data():
             schedule_items.append({"hash": h, "text": text})
 
     # ==========================================
-    # 【テスト用データ注入処理：カルーセル確認用】
-    # 前回のテストデータから少し変更し、新旧パネル両方を出現させます
+    # 【テスト用データ注入処理：デザイン確認用 2】
+    # デザイン確認のため、前回の架空データから少し変更しています
     # ==========================================
-    mock_data_1 = "【本戦】 架空オープンダブルス第99戦 / 2026年12月31日(木) / カルーセルテスト会場 / 180名 / 調整中"
-    mock_data_2 = "【カップ戦】 架空ルアーメーカーカップ / 開催日 12月31日(木) / 主催 カルーセルテスト / 定員 100名 / 開催地 愛知県"
+    mock_data_1 = "【本戦】 架空オープンダブルス第99戦 / 2026年12月31日(木) / デザインテスト会場 / 180名 / 調整中"
+    mock_data_2 = "【カップ戦】 架空ルアーメーカーカップ / 開催日 12月31日(木) / 主催 デザインテスト / 定員 100名 / 開催地 愛知県"
     
     schedule_items.append({"hash": hashlib.md5(mock_data_1.encode('utf-8')).hexdigest(), "text": mock_data_1})
     schedule_items.append({"hash": hashlib.md5(mock_data_2.encode('utf-8')).hexdigest(), "text": mock_data_2})
