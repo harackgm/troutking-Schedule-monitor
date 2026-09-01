@@ -22,7 +22,7 @@ LINE_USER_ID = os.environ.get("LINE_USER_ID")
 # カルーセル(Flex Message)生成関数
 # ==========================================
 def create_change_bubble(title, old_text, new_text):
-    """【変更】新旧比較用カードの生成（上が旧、下が新）"""
+    """【変更】新旧比較用カードの生成（全体サイズ拡大版）"""
     return {
         "type": "bubble",
         "header": {
@@ -39,13 +39,13 @@ def create_change_bubble(title, old_text, new_text):
             "contents": [
                 {"type": "text", "text": title, "weight": "bold", "size": "md", "wrap": True},
                 {"type": "separator", "margin": "md"},
-                # 変更前（赤文字＋小サイズ）
-                {"type": "text", "text": "【変更前】", "size": "xs", "color": "#E74C3C", "weight": "bold", "margin": "md"},
-                {"type": "text", "text": old_text, "size": "xs", "color": "#7F8C8D", "wrap": True},
+                # 変更前（見出し: sm, 本文: sm に拡大）
+                {"type": "text", "text": "【変更前】", "size": "sm", "color": "#E74C3C", "weight": "bold", "margin": "md"},
+                {"type": "text", "text": old_text, "size": "sm", "color": "#7F8C8D", "wrap": True},
                 {"type": "separator", "margin": "md"},
-                # 変更後（緑文字＋太字）
-                {"type": "text", "text": "【変更後】", "size": "xs", "color": "#27AE60", "weight": "bold", "margin": "md"},
-                {"type": "text", "text": new_text, "size": "sm", "color": "#2C3E50", "weight": "bold", "wrap": True}
+                # 変更後（見出し: sm, 本文: md(太字) に拡大）
+                {"type": "text", "text": "【変更後】", "size": "sm", "color": "#27AE60", "weight": "bold", "margin": "md"},
+                {"type": "text", "text": new_text, "size": "md", "color": "#2C3E50", "weight": "bold", "wrap": True}
             ]
         }
     }
