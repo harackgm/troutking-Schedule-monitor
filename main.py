@@ -4,6 +4,7 @@ import json
 import os
 import hashlib
 import time
+from datetime import datetime, timezone, timedelta
 
 # ==========================================
 # 設定と安全装置
@@ -200,6 +201,13 @@ def save_db(data_dict):
 
 def main():
     print("--- スクレイピング開始 ---")
+    
+    # 日本時間（JST）の取得
+    jst = timezone(timedelta(hours=9))
+    now_jst = datetime.now(jst)
+    current_hour = now_jst.hour
+    print(f"現在時刻（日本時間）: {now_jst.strftime('%Y-%m-%d %H:%M:%S')}")
+
     new_data = get_schedule_data()
     
     if not new_data:
@@ -233,7 +241,15 @@ def main():
         return
 
     if total_changes > 0:
-        # 新旧比較に対応したカルーセル通知を実行
+        # ==========================================
+        # 【夜間通知保留機能】0時〜9時未満の判定
+        # ==========================================
+        if 0 <= current_hour < 9:
+            print(f"【夜間通知保留】現在{current_hour}時（0時〜9時未満）のため通知をスキップします。")
+            print("DBの更新を行わないため、朝9時以降の実行時にまとめて通知されます。")
+            return
+
+        # 9時以降であれば通常通りLINE通知を送信し、DBを更新
         send_line_flex_carousel(added, removed)
         save_db(new_db)
         print("DBを更新しました。")
