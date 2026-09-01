@@ -21,7 +21,6 @@ LINE_USER_ID = os.environ.get("LINE_USER_ID")
 # 関数
 # ==========================================
 def send_line_message(message_text):
-    """LINE Messaging API を使用してPushメッセージを送信する"""
     if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_USER_ID:
         print("エラー: LINEのトークン情報が設定されていません。")
         return
@@ -44,11 +43,10 @@ def send_line_message(message_text):
         print(f"LINE送信エラー: {e}")
 
 def get_schedule_data():
-    """本戦とカップ戦の情報を抽出し、ハッシュ化してリストで返す"""
     headers = {"User-Agent": USER_AGENT}
     
     try:
-        time.sleep(2) # サーバー負荷軽減
+        time.sleep(2) 
         response = requests.get(TARGET_URL, headers=headers, timeout=10)
         response.raise_for_status()
     except Exception as e:
@@ -58,24 +56,20 @@ def get_schedule_data():
     soup = BeautifulSoup(response.content, "html.parser")
     temp_schedule_dict = {}
 
-    # 1. 【本戦】 テーブル構造からの抽出
     for tr in soup.find_all('tr'):
         cells = tr.find_all(['th', 'td'])
-        if len(cells) >= 4:  # 列数が多い行を本戦と判定
+        if len(cells) >= 4:
             text = " / ".join([c.get_text(strip=True) for c in cells if c.get_text(strip=True)])
-            if "大会名" not in text: # ヘッダー行を除外
+            if "大会名" not in text:
                 h = hashlib.md5(text.encode('utf-8')).hexdigest()
                 temp_schedule_dict[h] = f"【本戦】 {text}"
 
-    # 2. 【カップ戦】 カード構造からの抽出 (シリーズ戦を除外)
     for element in soup.find_all(['div', 'li']):
         text = element.get_text(separator=" / ", strip=True)
-        # 判定条件: 「開催日」「定員」を含み、長すぎないブロック（シリーズ戦は「定員」表記がないため弾かれる）
         if "開催日" in text and "定員" in text and "主催" in text and len(text) < 400:
             h = hashlib.md5(text.encode('utf-8')).hexdigest()
             temp_schedule_dict[h] = f"【カップ戦】 {text}"
 
-    # 3. HTMLの入れ子構造による重複（包含関係）を排除する安全処理
     schedule_items = []
     for h, text in temp_schedule_dict.items():
         is_subset = False
@@ -85,6 +79,16 @@ def get_schedule_data():
                 break
         if not is_subset:
             schedule_items.append({"hash": h, "text": text})
+
+    # ==========================================
+    # 【テスト用データ注入処理】
+    # 意図的に架空の差分を1件作り出し、LINE通知を誘発します
+    # ==========================================
+    test_text = "【システムテスト】LINE APIとの連携テスト。このメッセージが届けば成功です。"
+    schedule_items.append({
+        "hash": hashlib.md5(test_text.encode('utf-8')).hexdigest(),
+        "text": test_text
+    })
 
     return schedule_items
 
@@ -123,9 +127,6 @@ def main():
     total_changes = len(added) + len(removed)
     print(f"検知結果: 追加/更新 {len(added)}件 / 削除/旧情報 {len(removed)}件")
 
-    # ==========================================
-    # 【最優先遵守: 安全装置（MAX_LIMIT制御）】
-    # ==========================================
     if total_changes > MAX_LIMIT:
         print(f"【安全装置発動】変更数が{total_changes}件あり上限（{MAX_LIMIT}件）を超えました。")
         print("ロジック変更に伴う全件検知と判定。LINE通知をスキップしてDBを最新化（既読化）します。")
@@ -139,7 +140,6 @@ def main():
         for text in removed:
             msg_lines.append(f"🔴 [旧情報]: {text}\n")
 
-        # LINE1通あたりの文字数制限対策として、メッセージを切り詰める処理を付加
         notification_message = "\n".join(msg_lines)[:2000] 
         send_line_message(notification_message)
         
