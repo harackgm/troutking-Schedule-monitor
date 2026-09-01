@@ -148,7 +148,8 @@ def send_line_flex_carousel(added_list, removed_list):
 def get_schedule_data():
     headers = {"User-Agent": USER_AGENT}
     try:
-        time.sleep(2)  # 【安全対策】サーバー負荷軽減のため待機
+        # 【サーバー負荷軽減】2秒待機
+        time.sleep(2)
         response = requests.get(TARGET_URL, headers=headers, timeout=10)
         response.raise_for_status()
     except Exception as e:
@@ -158,6 +159,7 @@ def get_schedule_data():
     soup = BeautifulSoup(response.content, "html.parser")
     temp_schedule_dict = {}
 
+    # 1. 【本戦】抽出
     for tr in soup.find_all('tr'):
         cells = tr.find_all(['th', 'td'])
         if len(cells) >= 4:
@@ -166,12 +168,14 @@ def get_schedule_data():
                 h = hashlib.md5(text.encode('utf-8')).hexdigest()
                 temp_schedule_dict[h] = f"【本戦】 {text}"
 
+    # 2. 【カップ戦】抽出（シリーズ戦を除外）
     for element in soup.find_all(['div', 'li']):
         text = element.get_text(separator=" / ", strip=True)
         if "開催日" in text and "定員" in text and "主催" in text and len(text) < 400:
             h = hashlib.md5(text.encode('utf-8')).hexdigest()
             temp_schedule_dict[h] = f"【カップ戦】 {text}"
 
+    # 3. 重複排除処理
     schedule_items = []
     for h, text in temp_schedule_dict.items():
         is_subset = False
@@ -181,13 +185,6 @@ def get_schedule_data():
                 break
         if not is_subset:
             schedule_items.append({"hash": h, "text": text})
-
-    # ==========================================
-    # 【テスト用データ注入処理：新旧比較テスト用】
-    # 大会名を同一にし、会場や決定事項（調整中→決定）が変わったケースを再現
-    # ==========================================
-    mock_data_1 = "【本戦】 架空オープンダブルス第99戦 / 2026年12月31日(木) / 東京フィッシングエリア / 180名 / エントリー受付中"
-    schedule_items.append({"hash": hashlib.md5(mock_data_1.encode('utf-8')).hexdigest(), "text": mock_data_1})
 
     return schedule_items
 
