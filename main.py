@@ -19,10 +19,10 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_USER_ID = os.environ.get("LINE_USER_ID")
 
 # ==========================================
-# カルーセル(Flex Message)生成関数（デザイン維持）
+# カルーセル(Flex Message)生成関数（リンクボタン追加版）
 # ==========================================
 def create_change_bubble(title, old_text, new_text):
-    """【変更】新旧比較用カードの生成（文字拡大版）"""
+    """【変更】新旧比較用カードの生成"""
     return {
         "type": "bubble",
         "header": {
@@ -44,6 +44,22 @@ def create_change_bubble(title, old_text, new_text):
                 {"type": "separator", "margin": "md"},
                 {"type": "text", "text": "【変更後】", "size": "sm", "color": "#27AE60", "weight": "bold", "margin": "md"},
                 {"type": "text", "text": new_text, "size": "md", "color": "#2C3E50", "weight": "bold", "wrap": True}
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "style": "link",
+                    "height": "sm",
+                    "action": {
+                        "type": "uri",
+                        "label": "公式サイトで確認",
+                        "uri": TARGET_URL
+                    }
+                }
             ]
         }
     }
@@ -67,6 +83,22 @@ def create_single_bubble(status_label, header_color, title, detail_text):
                 {"type": "text", "text": title, "weight": "bold", "size": "md", "wrap": True},
                 {"type": "separator", "margin": "md"},
                 {"type": "text", "text": detail_text, "size": "sm", "color": "#333333", "wrap": True, "margin": "md"}
+            ]
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "style": "link",
+                    "height": "sm",
+                    "action": {
+                        "type": "uri",
+                        "label": "公式サイトで確認",
+                        "uri": TARGET_URL
+                    }
+                }
             ]
         }
     }
