@@ -19,16 +19,16 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_USER_ID = os.environ.get("LINE_USER_ID")
 
 # ==========================================
-# カルーセル(Flex Message)生成関数
+# カルーセル(Flex Message)生成関数（デザイン維持）
 # ==========================================
 def create_change_bubble(title, old_text, new_text):
-    """【変更】新旧比較用カードの生成（全体サイズ拡大版）"""
+    """【変更】新旧比較用カードの生成（文字拡大版）"""
     return {
         "type": "bubble",
         "header": {
             "type": "box",
             "layout": "vertical",
-            "backgroundColor": "#F39C12",  # オレンジ（変更表示）
+            "backgroundColor": "#F39C12",
             "contents": [
                 {"type": "text", "text": "🟡 日程・会場の変更", "color": "#ffffff", "weight": "bold", "size": "sm"}
             ]
@@ -39,11 +39,9 @@ def create_change_bubble(title, old_text, new_text):
             "contents": [
                 {"type": "text", "text": title, "weight": "bold", "size": "md", "wrap": True},
                 {"type": "separator", "margin": "md"},
-                # 変更前（見出し: sm, 本文: sm に拡大）
                 {"type": "text", "text": "【変更前】", "size": "sm", "color": "#E74C3C", "weight": "bold", "margin": "md"},
                 {"type": "text", "text": old_text, "size": "sm", "color": "#7F8C8D", "wrap": True},
                 {"type": "separator", "margin": "md"},
-                # 変更後（見出し: sm, 本文: md(太字) に拡大）
                 {"type": "text", "text": "【変更後】", "size": "sm", "color": "#27AE60", "weight": "bold", "margin": "md"},
                 {"type": "text", "text": new_text, "size": "md", "color": "#2C3E50", "weight": "bold", "wrap": True}
             ]
@@ -82,7 +80,6 @@ def send_line_flex_carousel(added_list, removed_list):
     bubbles = []
     processed_removed = set()
 
-    # 1. 大会名が一致するものを「変更（新旧比較）」としてペアリング
     for add_item in added_list:
         add_parts = [p.strip() for p in add_item.split(" / ") if p.strip()]
         add_title = add_parts[0] if add_parts else ""
@@ -95,21 +92,17 @@ def send_line_flex_carousel(added_list, removed_list):
             rem_parts = [p.strip() for p in rem_item.split(" / ") if p.strip()]
             rem_title = rem_parts[0] if rem_parts else ""
 
-            # 大会名が一致した場合は変更データとみなす
             if add_title == rem_title:
                 matched_remove = rem_item
                 rem_detail = " / ".join(rem_parts[1:]) if len(rem_parts) > 1 else ""
                 break
 
         if matched_remove:
-            # 新旧比較カードを作成
             bubbles.append(create_change_bubble(add_title, rem_detail, add_detail))
             processed_removed.add(matched_remove)
         else:
-            # 純粋な新規追加カードを作成
             bubbles.append(create_single_bubble("🟢 新規追加", "#27AE60", add_title, add_detail))
 
-    # 2. ペアリングされなかった残りの削除データを「削除/中止」としてカード化
     for rem_item in removed_list:
         if rem_item not in processed_removed:
             rem_parts = [p.strip() for p in rem_item.split(" / ") if p.strip()]
@@ -144,7 +137,7 @@ def send_line_flex_carousel(added_list, removed_list):
         print(f"LINE送信エラー: {e}")
 
 # ==========================================
-# スクレイピング＆メイン処理
+# スクレイピング処理（本戦＋カップ戦を監視／シリーズ戦は除外）
 # ==========================================
 def get_schedule_data():
     headers = {"User-Agent": USER_AGENT}
@@ -161,22 +154,30 @@ def get_schedule_data():
     temp_schedule_dict = {}
 
     # 1. 【本戦】抽出
-    for tr in soup.find_all('tr'):
-        cells = tr.find_all(['th', 'td'])
-        if len(cells) >= 4:
-            text = " / ".join([c.get_text(strip=True) for c in cells if c.get_text(strip=True)])
-            if "大会名" not in text:
-                h = hashlib.md5(text.encode('utf-8')).hexdigest()
-                temp_schedule_dict[h] = f"【本戦】 {text}"
+    main_items = soup.find_all('li', class_='main_race__cnt__list__itm__list__itm')
+    for item in main_items:
+        text = item.get_text(separator=" / ", strip=True)
+        clean_text = " / ".join([p.strip() for p in text.split('/') if p.strip()])
+        if clean_text and "大会名" not in clean_text:
+            h = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+            temp_schedule_dict[h] = f"【本戦】 {clean_text}"
 
-    # 2. 【カップ戦】抽出（シリーズ戦を除外）
-    for element in soup.find_all(['div', 'li']):
-        text = element.get_text(separator=" / ", strip=True)
-        if "開催日" in text and "定員" in text and "主催" in text and len(text) < 400:
-            h = hashlib.md5(text.encode('utf-8')).hexdigest()
-            temp_schedule_dict[h] = f"【カップ戦】 {text}"
+    # 2. 【カップ戦】抽出（「シリーズ戦」は明確に除外）
+    regional_items = soup.find_all('li', class_='regional__list__itm')
+    for item in regional_items:
+        # 直前のh3タグを取得して「シリーズ戦」グループかどうかを判定
+        parent_h3 = item.find_previous('h3')
+        if parent_h3 and "シリーズ戦" in parent_h3.get_text():
+            continue  # シリーズ戦はスキップ
 
-    # 3. 重複排除処理
+        text = item.get_text(separator=" / ", strip=True)
+        clean_text = " / ".join([p.strip() for p in text.split('/') if p.strip()])
+        
+        if "開催日" in clean_text and "主催" in clean_text and len(clean_text) < 400:
+            h = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+            temp_schedule_dict[h] = f"【カップ戦】 {clean_text}"
+
+    # 重複・部分一致排除処理
     schedule_items = []
     for h, text in temp_schedule_dict.items():
         is_subset = False
@@ -236,7 +237,7 @@ def main():
     # ==========================================
     if total_changes > MAX_LIMIT:
         print(f"【安全装置発動】変更数が{total_changes}件あり上限（{MAX_LIMIT}件）を超えました。")
-        print("ロジック変更に伴う全件検知と判定。LINE通知をスキップしてDBを最新化（既読化）します。")
+        print("対象変更に伴う全件検知と判定。LINE通知をスキップしてDBを最新化（既読化）します。")
         save_db(new_db)
         return
 
