@@ -13,18 +13,28 @@ TARGET_URL = "https://www.troutking.net/schedule/"
 DB_FILE = "schedule_db.json"
 MAX_LIMIT = 10  # 【絶対遵守】一度の変更が10件を超えたら異常とみなしLINE通知をスキップ
 
+# GitHubにアップロードされたロゴ画像の直リンクURL
+LOGO_IMAGE_URL = "https://raw.githubusercontent.com/harackgm/troutking-Schedule-monitor/main/torakinlogo.png"
+
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_USER_ID = os.environ.get("LINE_USER_ID")
 
 # ==========================================
-# カルーセル(Flex Message)生成関数（リンクボタン追加版）
+# カルーセル(Flex Message)生成関数（ロゴ画像追加版）
 # ==========================================
 def create_change_bubble(title, old_text, new_text):
-    """【変更】新旧比較用カードの生成"""
+    """【変更】新旧比較用カードの生成（ロゴ画像付き）"""
     return {
         "type": "bubble",
+        "hero": {
+            "type": "image",
+            "url": LOGO_IMAGE_URL,
+            "size": "full",
+            "aspectRatio": "20:3",
+            "aspectMode": "cover"
+        },
         "header": {
             "type": "box",
             "layout": "vertical",
@@ -65,9 +75,16 @@ def create_change_bubble(title, old_text, new_text):
     }
 
 def create_single_bubble(status_label, header_color, title, detail_text):
-    """【新規・削除】単体データ用カードの生成"""
+    """【新規・削除】単体データ用カードの生成（ロゴ画像付き）"""
     return {
         "type": "bubble",
+        "hero": {
+            "type": "image",
+            "url": LOGO_IMAGE_URL,
+            "size": "full",
+            "aspectRatio": "20:3",
+            "aspectMode": "cover"
+        },
         "header": {
             "type": "box",
             "layout": "vertical",
