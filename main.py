@@ -22,7 +22,7 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_USER_ID = os.environ.get("LINE_USER_ID")
 
 # ==========================================
-# カルーセル(Flex Message)生成関数（ロゴ画像追加版）
+# カルーセル(Flex Message)生成関数
 # ==========================================
 def create_change_bubble(title, old_text, new_text):
     """【変更】新旧比較用カードの生成（ロゴ画像付き）"""
@@ -186,7 +186,7 @@ def send_line_flex_carousel(added_list, removed_list):
         print(f"LINE送信エラー: {e}")
 
 # ==========================================
-# スクレイピング処理（本戦＋カップ戦を監視／シリーズ戦は除外）
+# スクレイピング処理（二重ブロックでシリーズ戦を完全除外）
 # ==========================================
 def get_schedule_data():
     headers = {"User-Agent": USER_AGENT}
@@ -211,16 +211,20 @@ def get_schedule_data():
             h = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
             temp_schedule_dict[h] = f"【本戦】 {clean_text}"
 
-    # 2. 【カップ戦】抽出（「シリーズ戦」は明確に除外）
+    # 2. 【カップ戦】抽出（「シリーズ戦」は二重判定で除外）
     regional_items = soup.find_all('li', class_='regional__list__itm')
     for item in regional_items:
-        # 直前のh3タグを取得して「シリーズ戦」グループかどうかを判定
+        # ブロック1: 直前のh3タグ（親見出し）に「シリーズ戦」が含まれる場合はスキップ
         parent_h3 = item.find_previous('h3')
         if parent_h3 and "シリーズ戦" in parent_h3.get_text():
-            continue  # シリーズ戦はスキップ
+            continue
 
         text = item.get_text(separator=" / ", strip=True)
         clean_text = " / ".join([p.strip() for p in text.split('/') if p.strip()])
+        
+        # ブロック2: 大会テキスト自体に「シリーズ戦」が含まれる場合も完全に除外
+        if "シリーズ戦" in clean_text:
+            continue
         
         if "開催日" in clean_text and "主催" in clean_text and len(clean_text) < 400:
             h = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
