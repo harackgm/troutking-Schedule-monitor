@@ -19,7 +19,6 @@ LOGO_IMAGE_URL = "https://raw.githubusercontent.com/harackgm/troutking-Schedule-
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_USER_ID = os.environ.get("LINE_USER_ID")
 
 # ==========================================
 # カルーセル(Flex Message)生成関数
@@ -121,9 +120,9 @@ def create_single_bubble(status_label, header_color, title, detail_text):
     }
 
 def send_line_flex_carousel(added_list, removed_list):
-    """新旧の差分を分析し、最適な比較カルーセルをLINEへ送信する"""
-    if not LINE_CHANNEL_ACCESS_TOKEN or not LINE_USER_ID:
-        print("エラー: LINEのトークン情報が設定されていません。")
+    """新旧の差分を分析し、登録者全員（Broadcast）へカルーセル通知を送信する"""
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        print("エラー: LINE_CHANNEL_ACCESS_TOKEN が設定されていません。")
         return
 
     bubbles = []
@@ -162,13 +161,13 @@ def send_line_flex_carousel(added_list, removed_list):
     if not bubbles:
         return
 
-    url = "https://api.line.me/v2/bot/message/push"
+    # 登録者全員へ送信するBroadcast APIエンドポイント
+    url = "https://api.line.me/v2/bot/message/broadcast"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
     }
     payload = {
-        "to": LINE_USER_ID,
         "messages": [
             {
                 "type": "flex",
@@ -181,7 +180,7 @@ def send_line_flex_carousel(added_list, removed_list):
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=10)
         response.raise_for_status()
-        print("LINEへの比較カルーセル通知が正常に送信されました。")
+        print("LINEへの登録者全員向けブロードキャスト通知が正常に送信されました。")
     except Exception as e:
         print(f"LINE送信エラー: {e}")
 
@@ -303,7 +302,7 @@ def main():
             print("DBの更新を行わないため、朝9時以降の実行時にまとめて通知されます。")
             return
 
-        # 9時以降であれば通常通りLINE通知を送信し、DBを更新
+        # 9時以降であれば通常通りLINE通知（ブロードキャスト）を送信し、DBを更新
         send_line_flex_carousel(added, removed)
         save_db(new_db)
         print("DBを更新しました。")
