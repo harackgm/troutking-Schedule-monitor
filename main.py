@@ -10,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 # 設定と安全装置
 # ==========================================
 TARGET_URL = "https://www.troutking.net/schedule/"
+NEWS_URL = "https://www.troutking.net/news/"
 DB_FILE = "schedule_db.json"
 MAX_LIMIT = 10  # 【絶対遵守】一度の変更が10件を超えたら異常とみなしLINE通知をスキップ
 
@@ -23,7 +24,7 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 # ==========================================
 # カルーセル(Flex Message)生成関数
 # ==========================================
-def create_change_bubble(title, old_text, new_text):
+def create_change_bubble(title, old_text, new_text, link_url=TARGET_URL):
     """【変更】新旧比較用カードの生成（ロゴ画像付き）"""
     return {
         "type": "bubble",
@@ -66,14 +67,14 @@ def create_change_bubble(title, old_text, new_text):
                     "action": {
                         "type": "uri",
                         "label": "公式サイトで確認",
-                        "uri": TARGET_URL
+                        "uri": link_url
                     }
                 }
             ]
         }
     }
 
-def create_single_bubble(status_label, header_color, title, detail_text):
+def create_single_bubble(status_label, header_color, title, detail_text, link_url=TARGET_URL):
     """【新規・削除】単体データ用カードの生成（ロゴ画像付き）"""
     return {
         "type": "bubble",
@@ -112,7 +113,7 @@ def create_single_bubble(status_label, header_color, title, detail_text):
                     "action": {
                         "type": "uri",
                         "label": "公式サイトで確認",
-                        "uri": TARGET_URL
+                        "uri": link_url
                     }
                 }
             ]
@@ -133,6 +134,9 @@ def send_line_flex_carousel(added_list, removed_list):
         add_title = add_parts[0] if add_parts else ""
         add_detail = " / ".join(add_parts[1:]) if len(add_parts) > 1 else ""
 
+        # お知らせの場合は遷移先をNEWSページヘ指定
+        link_url = NEWS_URL if "【お知らせ】" in add_title else TARGET_URL
+
         matched_remove = None
         for rem_item in removed_list:
             if rem_item in processed_removed:
@@ -146,17 +150,19 @@ def send_line_flex_carousel(added_list, removed_list):
                 break
 
         if matched_remove:
-            bubbles.append(create_change_bubble(add_title, rem_detail, add_detail))
+            bubbles.append(create_change_bubble(add_title, rem_detail, add_detail, link_url))
             processed_removed.add(matched_remove)
         else:
-            bubbles.append(create_single_bubble("🟢 新規追加", "#27AE60", add_title, add_detail))
+            bubbles.append(create_single_bubble("🟢 新規追加", "#27AE60", add_title, add_detail, link_url))
 
     for rem_item in removed_list:
         if rem_item not in processed_removed:
             rem_parts = [p.strip() for p in rem_item.split(" / ") if p.strip()]
             rem_title = rem_parts[0] if rem_parts else ""
             rem_detail = " / ".join(rem_parts[1:]) if len(rem_parts) > 1 else ""
-            bubbles.append(create_single_bubble("🔴 削除/中止", "#E74C3C", rem_title, rem_detail))
+            
+            link_url = NEWS_URL if "【お知らせ】" in rem_title else TARGET_URL
+            bubbles.append(create_single_bubble("🔴 削除/中止", "#E74C3C", rem_title, rem_detail, link_url))
 
     if not bubbles:
         return
@@ -171,7 +177,7 @@ def send_line_flex_carousel(added_list, removed_list):
         "messages": [
             {
                 "type": "flex",
-                "altText": "トラキンスケジュール更新通知",
+                "altText": "トラキンスケジュール/NEWS更新通知",
                 "contents": {"type": "carousel", "contents": bubbles}
             }
         ]
@@ -185,55 +191,82 @@ def send_line_flex_carousel(added_list, removed_list):
         print(f"LINE送信エラー: {e}")
 
 # ==========================================
-# スクレイピング処理（二重ブロックでシリーズ戦を完全除外）
+# スクレイピング処理（スケジュール ＋ NEWS）
 # ==========================================
-def get_schedule_data():
+def get_monitored_data():
     headers = {"User-Agent": USER_AGENT}
+    temp_dict = {}
+
+    # ------------------------------------------
+    # 1. スケジュールページ（本戦・カップ戦）のスクレイピング
+    # ------------------------------------------
     try:
-        # 【サーバー負荷軽減】2秒待機
-        time.sleep(2)
+        time.sleep(2)  # サーバー負荷軽減
         response = requests.get(TARGET_URL, headers=headers, timeout=10)
         response.raise_for_status()
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # 本戦
+        main_items = soup.find_all('li', class_='main_race__cnt__list__itm__list__itm')
+        for item in main_items:
+            text = item.get_text(separator=" / ", strip=True)
+            clean_text = " / ".join([p.strip() for p in text.split('/') if p.strip()])
+            if clean_text and "大会名" not in clean_text:
+                h = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+                temp_dict[h] = f"【本戦】 {clean_text}"
+
+        # カップ戦（シリーズ戦除外）
+        regional_items = soup.find_all('li', class_='regional__list__itm')
+        for item in regional_items:
+            parent_h3 = item.find_previous('h3')
+            if parent_h3 and "シリーズ戦" in parent_h3.get_text():
+                continue
+
+            text = item.get_text(separator=" / ", strip=True)
+            clean_text = " / ".join([p.strip() for p in text.split('/') if p.strip()])
+            
+            if "シリーズ戦" in clean_text:
+                continue
+            
+            if "開催日" in clean_text and "主催" in clean_text and len(clean_text) < 400:
+                h = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
+                temp_dict[h] = f"【カップ戦】 {clean_text}"
+
     except Exception as e:
-        print(f"サイトの取得に失敗しました: {e}")
-        return []
+        print(f"スケジュールページの取得に失敗しました: {e}")
 
-    soup = BeautifulSoup(response.content, "html.parser")
-    temp_schedule_dict = {}
+    # ------------------------------------------
+    # 2. NEWS（お知らせ）ページのスクレイピング
+    # ------------------------------------------
+    try:
+        time.sleep(2)  # サーバー負荷軽減
+        response_news = requests.get(NEWS_URL, headers=headers, timeout=10)
+        response_news.raise_for_status()
+        soup_news = BeautifulSoup(response_news.content, "html.parser")
 
-    # 1. 【本戦】抽出
-    main_items = soup.find_all('li', class_='main_race__cnt__list__itm__list__itm')
-    for item in main_items:
-        text = item.get_text(separator=" / ", strip=True)
-        clean_text = " / ".join([p.strip() for p in text.split('/') if p.strip()])
-        if clean_text and "大会名" not in clean_text:
-            h = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
-            temp_schedule_dict[h] = f"【本戦】 {clean_text}"
+        news_items = soup_news.find_all('li', class_='m-news_list__itm')
+        for item in news_items:
+            date_el = item.find('span', class_='m-news_list__itm__anchor__date')
+            cat_el = item.find('span', class_='m-news_list__itm__anchor__cat')
+            hdg_el = item.find('h3', class_='m-news_list__itm__anchor__hdg')
 
-    # 2. 【カップ戦】抽出（「シリーズ戦」は二重判定で除外）
-    regional_items = soup.find_all('li', class_='regional__list__itm')
-    for item in regional_items:
-        # ブロック1: 直前のh3タグ（親見出し）に「シリーズ戦」が含まれる場合はスキップ
-        parent_h3 = item.find_previous('h3')
-        if parent_h3 and "シリーズ戦" in parent_h3.get_text():
-            continue
+            date_text = date_el.get_text(strip=True) if date_el else ""
+            cat_text = cat_el.get_text(strip=True) if cat_el else ""
+            hdg_text = hdg_el.get_text(strip=True) if hdg_el else ""
 
-        text = item.get_text(separator=" / ", strip=True)
-        clean_text = " / ".join([p.strip() for p in text.split('/') if p.strip()])
-        
-        # ブロック2: 大会テキスト自体に「シリーズ戦」が含まれる場合も完全に除外
-        if "シリーズ戦" in clean_text:
-            continue
-        
-        if "開催日" in clean_text and "主催" in clean_text and len(clean_text) < 400:
-            h = hashlib.md5(clean_text.encode('utf-8')).hexdigest()
-            temp_schedule_dict[h] = f"【カップ戦】 {clean_text}"
+            if hdg_text:
+                full_text = f"【お知らせ】 {hdg_text} / 日付: {date_text} / 種別: {cat_text}"
+                h = hashlib.md5(full_text.encode('utf-8')).hexdigest()
+                temp_dict[h] = full_text
+
+    except Exception as e:
+        print(f"NEWSページの取得に失敗しました: {e}")
 
     # 重複・部分一致排除処理
     schedule_items = []
-    for h, text in temp_schedule_dict.items():
+    for h, text in temp_dict.items():
         is_subset = False
-        for other_text in temp_schedule_dict.values():
+        for other_text in temp_dict.values():
             if text != other_text and text in other_text:
                 is_subset = True
                 break
@@ -261,7 +294,7 @@ def main():
     current_hour = now_jst.hour
     print(f"現在時刻（日本時間）: {now_jst.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    new_data = get_schedule_data()
+    new_data = get_monitored_data()
     
     if not new_data:
         print("データが取得できませんでした。")
@@ -289,7 +322,7 @@ def main():
     # ==========================================
     if total_changes > MAX_LIMIT:
         print(f"【安全装置発動】変更数が{total_changes}件あり上限（{MAX_LIMIT}件）を超えました。")
-        print("対象変更に伴う全件検知と判定。LINE通知をスキップしてDBを最新化（既読化）します。")
+        print("NEWS初追加等に伴う全件検知と判定。LINE通知をスキップしてDBを最新化（既読化）します。")
         save_db(new_db)
         return
 
