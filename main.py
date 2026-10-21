@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 # ==========================================
 TARGET_URL = "https://www.troutking.net/schedule/"
 NEWS_URL = "https://www.troutking.net/news/"
+ENTRY_URL = "https://www.troutking.net/entry/"  # ★監視URL追加
 DB_FILE = "schedule_db.json"
 MAX_LIMIT = 10  # 【絶対遵守】一度の変更が10件を超えたら異常とみなしLINE通知をスキップ
 
@@ -24,7 +25,7 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 # ==========================================
 # カルーセル(Flex Message)生成関数
 # ==========================================
-def create_change_bubble(title, old_text, new_text, link_url=TARGET_URL):
+def create_change_bubble(title, old_text, new_text, link_url):
     """【変更】新旧比較用カードの生成（ロゴ画像付き）"""
     return {
         "type": "bubble",
@@ -40,7 +41,7 @@ def create_change_bubble(title, old_text, new_text, link_url=TARGET_URL):
             "layout": "vertical",
             "backgroundColor": "#F39C12",
             "contents": [
-                {"type": "text", "text": "🟡 日程・会場の変更", "color": "#ffffff", "weight": "bold", "size": "sm"}
+                {"type": "text", "text": "🟡 情報の更新", "color": "#ffffff", "weight": "bold", "size": "sm"}
             ]
         },
         "body": {
@@ -74,7 +75,7 @@ def create_change_bubble(title, old_text, new_text, link_url=TARGET_URL):
         }
     }
 
-def create_single_bubble(status_label, header_color, title, detail_text, link_url=TARGET_URL):
+def create_single_bubble(status_label, header_color, title, detail_text, link_url):
     """【新規・削除】単体データ用カードの生成（ロゴ画像付き）"""
     return {
         "type": "bubble",
@@ -134,8 +135,13 @@ def send_line_flex_carousel(added_list, removed_list):
         add_title = add_parts[0] if add_parts else ""
         add_detail = " / ".join(add_parts[1:]) if len(add_parts) > 1 else ""
 
-        # お知らせの場合は遷移先をNEWSページヘ指定
-        link_url = NEWS_URL if "【お知らせ】" in add_title else TARGET_URL
+        # ★ページ種別ごとの遷移先リンク自動振り分け
+        if "【お知らせ】" in add_title:
+            link_url = NEWS_URL
+        elif "【エントリー】" in add_title:
+            link_url = ENTRY_URL
+        else:
+            link_url = TARGET_URL
 
         matched_remove = None
         for rem_item in removed_list:
@@ -161,13 +167,20 @@ def send_line_flex_carousel(added_list, removed_list):
             rem_title = rem_parts[0] if rem_parts else ""
             rem_detail = " / ".join(rem_parts[1:]) if len(rem_parts) > 1 else ""
             
-            link_url = NEWS_URL if "【お知らせ】" in rem_title else TARGET_URL
+            # ★ページ種別ごとの遷移先リンク自動振り分け
+            if "【お知らせ】" in rem_title:
+                link_url = NEWS_URL
+            elif "【エントリー】" in rem_title:
+                link_url = ENTRY_URL
+            else:
+                link_url = TARGET_URL
+                
             bubbles.append(create_single_bubble("🔴 削除/中止", "#E74C3C", rem_title, rem_detail, link_url))
 
     if not bubbles:
         return
 
-    # 登録者全員へ送信するBroadcast APIエンドポイント
+    # ★登録者全員へ送信するBroadcast APIエンドポイント（変更なし）
     url = "https://api.line.me/v2/bot/message/broadcast"
     headers = {
         "Content-Type": "application/json",
@@ -177,7 +190,7 @@ def send_line_flex_carousel(added_list, removed_list):
         "messages": [
             {
                 "type": "flex",
-                "altText": "トラキンスケジュール/NEWS更新通知",
+                "altText": "トラキン監視システム更新通知",
                 "contents": {"type": "carousel", "contents": bubbles}
             }
         ]
@@ -191,14 +204,14 @@ def send_line_flex_carousel(added_list, removed_list):
         print(f"LINE送信エラー: {e}")
 
 # ==========================================
-# スクレイピング処理（スケジュール ＋ NEWS）
+# スクレイピング処理（スケジュール ＋ NEWS ＋ エントリー）
 # ==========================================
 def get_monitored_data():
     headers = {"User-Agent": USER_AGENT}
     temp_dict = {}
 
     # ------------------------------------------
-    # 1. スケジュールページ（本戦・カップ戦）のスクレイピング
+    # 1. スケジュールページ（本戦・カップ戦）のスクレイピング（変更なし）
     # ------------------------------------------
     try:
         time.sleep(2)  # サーバー負荷軽減
@@ -236,7 +249,7 @@ def get_monitored_data():
         print(f"スケジュールページの取得に失敗しました: {e}")
 
     # ------------------------------------------
-    # 2. NEWS（お知らせ）ページのスクレイピング
+    # 2. NEWS（お知らせ）ページのスクレイピング（変更なし）
     # ------------------------------------------
     try:
         time.sleep(2)  # サーバー負荷軽減
@@ -261,6 +274,42 @@ def get_monitored_data():
 
     except Exception as e:
         print(f"NEWSページの取得に失敗しました: {e}")
+
+    # ------------------------------------------
+    # 3. ENTRY（エントリー）ページのスクレイピング【新規追加】
+    # ------------------------------------------
+    try:
+        time.sleep(2)  # サーバー負荷軽減
+        response_entry = requests.get(ENTRY_URL, headers=headers, timeout=10)
+        response_entry.raise_for_status()
+        soup_entry = BeautifulSoup(response_entry.content, "html.parser")
+
+        entry_items = soup_entry.find_all('li', class_='tournament__list__itm__cnt__list__itm__list__itm')
+        for item in entry_items:
+            # 見た目のテキストを抽出
+            text = item.get_text(separator=" / ", strip=True)
+            clean_text = " / ".join([p.strip() for p in text.split('/') if p.strip()])
+            
+            # HTML内のURLリンク（エントリーフォーム等へのリンク）を全て抽出
+            links = []
+            for a in item.find_all('a', href=True):
+                href = a['href'].strip()
+                if href and href not in links:
+                    links.append(href)
+            
+            links_str = " / ".join(links)
+            
+            if clean_text:
+                full_text = f"【エントリー】 {clean_text}"
+                # URLリンクがあれば結合（リンク追加や変更もハッシュ差分として検知可能に）
+                if links_str:
+                    full_text += f" / URL: {links_str}"
+                
+                h = hashlib.md5(full_text.encode('utf-8')).hexdigest()
+                temp_dict[h] = full_text
+
+    except Exception as e:
+        print(f"ENTRYページの取得に失敗しました: {e}")
 
     # 重複・部分一致排除処理
     schedule_items = []
@@ -322,7 +371,7 @@ def main():
     # ==========================================
     if total_changes > MAX_LIMIT:
         print(f"【安全装置発動】変更数が{total_changes}件あり上限（{MAX_LIMIT}件）を超えました。")
-        print("NEWS初追加等に伴う全件検知と判定。LINE通知をスキップしてDBを最新化（既読化）します。")
+        print("ENTRYページ初追加等に伴う全件検知と判定。LINE通知をスキップしてDBを最新化（既読化）します。")
         save_db(new_db)
         return
 
@@ -335,12 +384,12 @@ def main():
             print("DBの更新を行わないため、朝9時以降の実行時にまとめて通知されます。")
             return
 
-        # 9時以降であれば通常通りLINE通知（ブロードキャスト）を送信し、DBを更新
+        # 9時以降であれば通常通りLINE通知（ブロードキャスト: 登録者全員）を送信し、DBを更新
         send_line_flex_carousel(added, removed)
         save_db(new_db)
         print("DBを更新しました。")
     else:
-        print("スケジュールの変更はありません。")
+        print("監視ページの変更はありません。")
 
 if __name__ == "__main__":
     main()
